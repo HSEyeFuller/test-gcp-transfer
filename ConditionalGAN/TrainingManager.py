@@ -16,6 +16,8 @@ import multiprocessing
 import concurrent.futures
 from pathos.multiprocessing import ProcessingPool as Pool
 import pathos.multiprocessing
+from random import randint
+
 
 class TrainingManager:
     
@@ -24,22 +26,27 @@ class TrainingManager:
         self.hsi = trainingDict["hsi"]
         self.optimalCheckpoint = trainingDict["optimalCheckpoint"]
         self.std = trainingDict["std"]
-        print("SELF", self.std)
+        
+        self.d1 = images.shape[1]
+        self.d2 = images.shape[2]
+        
+        self.nTraining = images.shape[0]
 
-        models = Model(trainingDict)
+        models = Model(trainingDict, self.d1, self.d2)
         self.generator, self.discriminator = self.extractModels(models)
              
         self.numPerlin = trainingDict["numPerlin"]
         self.numGaussian = trainingDict["numGaussian"]
         
-        print(self.numPerlin, self.numGaussian)
         
         self.topNm = trainingDict["topNm"]
+
+
         
         self.database = Database()
         self.dataGenerator = DataGenerator(self.hsi, self.topNm)
-        self.losses = Losses()
-        self.evaluator = ModelEvaluation(self.topNm)
+        self.losses = Losses(topNm = self.topNm)
+        self.evaluator = ModelEvaluation(self.d1, self.d2, topNm = self.topNm)
         
         self.generator_optimizer = tf.keras.optimizers.Adam(trainingDict["gen_lr"], beta_1=trainingDict["gen_b1"])
         self.discriminator_optimizer = tf.keras.optimizers.Adam(trainingDict["disc_lr"], beta_1=trainingDict["disc_b1"])
@@ -52,6 +59,7 @@ class TrainingManager:
         
         self.tImages = tImages
         self.tMaps = tMaps
+        self.nTesting = tMaps.shape[0]
         
         self.checkpoint_dir = self.label + "/checkpoints/"
         self.checkpoint_prefix = os.path.join(self.checkpoint_dir, "ckpt")
@@ -64,7 +72,7 @@ class TrainingManager:
         self.summary_writer = tf.summary.create_file_writer(
   self.label + "/graph/")
         
-        self.training_losses = {'gen_total_loss': [], 'gen_gan_loss': [], 'gen_l1_loss': [], 'disc_loss': []}
+        self.training_losses = {'gen_total_loss': [], 'gen_gan_loss': [], 'gen_l1_loss': [], 'disc_loss': [], 'gen_true_l1_loss': []}
         
 
     @tf.function()
@@ -74,7 +82,7 @@ class TrainingManager:
         disc_real_output = self.discriminator([input_image, target], training=True)
         disc_generated_output = self.discriminator([input_image, gen_output], training=True)
 
-        gen_total_loss, gen_gan_loss, gen_l1_loss = self.losses.generator_loss(disc_generated_output, gen_output, target)
+        gen_total_loss, gen_gan_loss, gen_l1_loss, gen_true_l1_loss = self.losses.generator_loss(disc_generated_output, gen_output, target)
         disc_loss = self.losses.discriminator_loss(disc_real_output, disc_generated_output)
 
       generator_gradients = gen_tape.gradient(gen_total_loss,
@@ -91,11 +99,13 @@ class TrainingManager:
         tf.summary.scalar('gen_total_loss', gen_total_loss, step=epoch)
         tf.summary.scalar('gen_gan_loss', gen_gan_loss, step=epoch)
         tf.summary.scalar('gen_l1_loss', gen_l1_loss, step=epoch)
+        tf.summary.scalar('gen_true_l1_loss', gen_true_l1_loss, step=epoch)
         tf.summary.scalar('disc_loss', disc_loss, step=epoch)
         
         self.training_losses['gen_total_loss'].append(gen_total_loss)
         self.training_losses['gen_gan_loss'].append(gen_gan_loss)
         self.training_losses['gen_l1_loss'].append(gen_l1_loss)
+        self.training_losses['gen_true_l1_loss'].append(gen_true_l1_loss)
         self.training_losses['disc_loss'].append(disc_loss)
         
 
@@ -114,10 +124,9 @@ class TrainingManager:
       for epoch in range(startingPoint, self.EPOCHS):
         start = time.time()
 
-        self.evaluator.evaluateTrio(self.generator, self.tImages, self.tMaps, epoch, 48, fileName = "example_1/" + str(epoch), label = self.label)
-        # self.evaluator.evaluateTrio(self.generator, self.tImages, self.tMaps, 1, 48, fileName = "example_2/" +str(epoch), label = self.label)
+        self.evaluator.evaluateTrio(self.generator, self.tImages, self.tMaps, randint(0,self.nTesting-1), fileName = "example_1/" + str(epoch), label = self.label)
         # Train
-        for n in range(imagesSubset.shape[0]):
+        for n in range(self.nTraining):
           image = imagesSubset[n]
           image = image[None,:,:,:]
           tmpMap = mapsSubset[n]
@@ -170,6 +179,8 @@ class TrainingManager:
             print(error)
         
             
+    def reNormalize(self, data):
+        return data * (self.topNm/2) + self.topNm
             
     def saveModel(self):
         self.generator.save(self.label + "/model")

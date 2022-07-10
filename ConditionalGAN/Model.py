@@ -6,15 +6,15 @@ import tensorflow as tf
 
 class Model:
     
-    def __init__(self, trainingDict):
+    def __init__(self, trainingDict, d1, d2):
         self.OUTPUT_CHANNELS = 1
         self.gen_down = trainingDict["gen_down"]
         self.gen_up = trainingDict["gen_up"]
         self.gen_dropout = trainingDict["gen_dropout"]
         self.disc_down = trainingDict["disc_down"]
         self.hsi = trainingDict["hsi"]
-        self.d1 = trainingDict["d1"]
-        self.d2 = trainingDict["d2"]
+        self.d1 = d1
+        self.d2 = d2
             
         
 

@@ -21,8 +21,9 @@ import re
 class ModelEvaluation:
     
     
-    def __init__(self, topNm = 1000):
+    def __init__(self, d1, d2, topNm = 1000):
         self.topNm = topNm
+        self.dim = d2
 
     def addNoise(self, image, std):
         row,col,ch= image.shape
@@ -47,20 +48,20 @@ class ModelEvaluation:
         
         
         
-    def saveImage(self, image, fn, dim = 144):
-        data = np.reshape(image, (dim,dim,3))
+    def saveImage(self, image, fn):
+        data = np.reshape(image, (self.dim,self.dim,3))
         plt.imshow(self.imRegulate(data), interpolation='nearest')
         plt.savefig(f'tmp/{fn}.png')
         
         
-    def saveMap(self, image, fn, dim = 144):
-        pData = np.reshape(image, (dim,dim))
+    def saveMap(self, image, fn):
+        pData = np.reshape(image, (self.dim,self.dim))
 
         fig = plt.figure(figsize = (5,5))
         ax1 = fig.add_subplot(projection='3d')
-        ax1.set_zlim(0, 3000)
-        x = np.arange(0, dim)
-        y = np.arange(0, dim)
+        # ax1.set_zlim(0, self.topNm)
+        x = np.arange(0, self.dim)
+        y = np.arange(0, self.dim)
         X, Y = np.meshgrid(x, y)
         surf = ax1.plot_surface(X, Y, pData, cmap = cm.coolwarm)
 
@@ -180,15 +181,40 @@ class ModelEvaluation:
         
         
         
-    def unpack(self, tiles, dim = 144):
-        depth = round(tiles.shape[0]/dim)
+    def unpack(self, tiles):
+        depth = round(tiles.shape[0]/self.dim)
         channels = tiles.shape[2]
-        output = np.zeros((depth, dim, dim, channels))
+        output = np.zeros((depth, self.dim, self.dim, channels))
+        print(output.shape, self.dim)
         for i in range(depth):
-            output[i] = tiles[i*dim:(i+1)*dim,:]
+            output[i] = tiles[i*self.dim:(i+1)*self.dim,:]
             
             
-        return output
+        return output 
+    
+    
+    def runTestingInference(self, model, image, dMap): #assumes pre-determined input format
+
+            
+   
+            
+            t0 = time()
+            predMap = model(image[None,:,:,:], training=True).numpy()
+            t1 = time.time()
+            
+            
+            
+            self.saveEyeVideo(self.unpack(image), "eye")
+            self.saveMapVideo(self.unpack(dMap), "gt")
+            self.saveMapVideo(self.unpack(predMap), "output")  
+            
+            
+    def reNormalize(self, data):
+        return data * (self.topNm/2) + self.topNm
+        
+            
+            
+            
             
 
 
@@ -202,40 +228,37 @@ class ModelEvaluation:
             image = images[index]
             
             
-        
             
             
             if noise:
                 image = self.addNoise(image, std)
-            tmpMap = maps[index]
+            tmpMap = self.reNormalize(maps[index])
             
             t0 = time.time()
-            predMap = model(image[None,:,:,:], training=True).numpy()
+            predMap = self.reNormalize(model(image[None,:,:,:], training=True).numpy()[0])
             t1 = time.time()
             
             
             
             self.saveEyeVideo(self.unpack(image), label + "/" + fileName + "eye")
-            self.saveMapVideo(self.unpack(self.normalize(tmpMap) * self.topNm), label + "/" + fileName + "input")
-            self.saveMapVideo(self.unpack(self.normalize(predMap[0]) * self.topNm), label + "/" + fileName + "output")
+            self.saveMapVideo(self.unpack(tmpMap), label + "/" + fileName + "input")
+            self.saveMapVideo(self.unpack(predMap), label + "/" + fileName + "output")
             
             
-            predMap = self.normalize(predMap[0]) * self.topNm
-            tmpMap = self.normalize(tmpMap) * self.topNm
             
             
             #SLICING AND DICING TO FIRST INDEX, OVERFITTING TO 144
-            predMap = predMap[0:144,:,:]
-            tmpMap = tmpMap[0:144,:,:]
-            image = image[0:144,:,:]
+            predMap = predMap[0:self.dim,:,:]
+            tmpMap = tmpMap[0:self.dim,:,:]
+            image = image[0:self.dim,:,:]
             
             
      
             
 
             #DISPLAY/DOWNLOAD
-            x = np.arange(0, 144)
-            y = np.arange(0, 144)
+            x = np.arange(0, self.dim)
+            y = np.arange(0, self.dim)
 
             fig = plt.figure(figsize=plt.figaspect(0.33))
             ax1 = fig.add_subplot(1, 3, 1, projection='3d')
@@ -248,11 +271,11 @@ class ModelEvaluation:
             ax2.set_title('Prediction')
             
             ax3= fig.add_subplot(1, 3, 3)
-            x = np.arange(0, 144)
-            y = np.arange(0, 144)
+            x = np.arange(0, self.dim)
+            y = np.arange(0, self.dim)
             X, Y = np.meshgrid(x, y)
-            pData = np.reshape(tmpMap[None,:,:,:], (144,144))
-            pData2 = np.reshape(predMap, (144,144))
+            pData = np.reshape(tmpMap[None,:,:,:], (self.dim,self.dim))
+            pData2 = np.reshape(predMap, (self.dim,self.dim))
             surf = ax1.plot_surface(X, Y, pData)
             surf2 = ax2.plot_surface(X, Y, pData2)
                         
@@ -264,7 +287,7 @@ class ModelEvaluation:
                 plt.savefig(label + "/" + fileName)
                 
 
-            return predMap.reshape(144,144), tmpMap.reshape(144,144)
+            return predMap.reshape(self.dim,self.dim), tmpMap.reshape(self.dim,self.dim)
 
 
 
@@ -290,25 +313,25 @@ class ModelEvaluation:
                 for i in range(len(best)):
                     rmse, index = best[i]
                     print("BAD", rmse)
-                    self.evaluateTrio(model, images, depthMaps, index, dim, download = True, noise = True, std = std, filePath = f'{filePath}/worst/{i}')
+                    self.evaluateTrio(model, images, depthMaps, index, self.dim, download = True, noise = True, std = std, filePath = f'{filePath}/worst/{i}')
                 for i in range(len(worst)):
                     rmse, index = worst[i]
                     print("GOOD", rmse)
-                    self.evaluateTrio(model, images, depthMaps, index, dim, download = True, noise = True, std = std, filePath = f'{filePath}/best/{i}')
+                    self.evaluateTrio(model, images, depthMaps, index, self.dim, download = True, noise = True, std = std, filePath = f'{filePath}/best/{i}')
 
                 return "Completed"
 
 
 
-    def showMap(self,depthMap, dim = 48):
+    def showMap(self,depthMap):
 
             fig = plt.figure(figsize = (5,5))
             ax1 = fig.add_subplot(projection='3d')
 
-            x = np.arange(0, dim)
-            y = np.arange(0, dim)
+            x = np.arange(0, self.dim)
+            y = np.arange(0, self.dim)
             X, Y = np.meshgrid(x, y)
-            pData = np.reshape(depthMap[None,:,:,:], (dim,dim))
+            pData = np.reshape(depthMap[None,:,:,:], (self.dim,self.dim))
             surf = ax1.plot_surface(X, Y, pData, cmap = cm.coolwarm)
             
             ax1.set_zlabel("Thickness" + " (" + "nm" + ")")
@@ -319,7 +342,7 @@ class ModelEvaluation:
             plt.show()
 
 
-    def batchEvaluate(self,model, images, maps, dim, noise = False, stds = [0.1], fileName = "cGan.csv"):
+    def batchEvaluate(self,model, images, maps, noise = False, stds = [0.1], fileName = "cGan.csv"):
             rmse = 0
             numImages = images.shape[0]
             with open(fileName, 'w', newline='') as file:

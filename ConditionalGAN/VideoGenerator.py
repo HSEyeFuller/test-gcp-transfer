@@ -31,6 +31,10 @@ class VideoGenerator:
         self.gaussMaps = np.load("20kGauss.npy")
         self.frameRate = frameRate
         self.blinkDuration = blinkDuration
+        
+        
+    def cleanNegativeNormalize(self, data, top):
+        return (data / (top/2)) - 1
 
         
     def normalize(self, data):
@@ -56,17 +60,18 @@ class VideoGenerator:
     def fetchStep(self, time, alpha, initial_frame):
         return np.divide(initial_frame,(1 + alpha*sqrt(time)))
     
+    
+    def randomRangeNormalize(self,image):
+        start = randint(0,self.topNm-1000)
+        rng = randint(600,1000)
+        
+        return self.normTwoValues(image, start, rng)
+    
+    def fr(self, data):
+        print(np.min(data), np.max(data))
+    
     def generateVideos(self, numVideos, variance = 0.12):
-        image, dMap = self.generatePerlinData(1)
-        _, nMap = self.generateGaussianData(1)
-        image = image[0]
-        dMap = dMap[0,:,:,0]
-        nMap = nMap[0,:,:,0]
         
-        alpha = uniform(0.16,0.28)
-        
-        
-        nMap = self.normTwoValues(nMap, alpha-variance, alpha + variance)
         nFrames= self.frameRate * self.blinkDuration
                 
         
@@ -78,18 +83,31 @@ class VideoGenerator:
         
         
         for i in tqdm(range(numVideos)):
+            
+            image, dMap = self.generatePerlinData(1) #0, 255 & 0,1
+            
+        
+            _, nMap = self.generateGaussianData(1)
+            image = image[0]
+            nMap = nMap[0,:,:,0]
+            dMap = dMap[0,:,:,0]
+
+            alpha = uniform(0.16,0.28)
+            
+
+
+            nMap = self.normTwoValues(nMap, alpha-variance, alpha + variance)
+            
+            
+            
             for k in range(self.frameRate * self.blinkDuration):
                 time = 1/self.frameRate * k
                 
-                x = np.linspace(0,2000,num=144)
-                y = np.linspace(0, 2000,num=144)
-                X, Y = np.meshgrid(x, y)
-                Y = np.flip(Y,0)
-                
-                step = Y - self.fetchStep(time, nMap, dMap)
                 
                 
-                finalImages[i,k] = self.fetchImageFromDepth(step) * self.circleTransform(diameter = 20, value = 0, jitter = 7) * self.circleTransform(diameter = 120, value = 0.6, jitter = 7)
+                step = self.fetchStep(time, nMap, dMap)
+                
+                finalImages[i,k] = self.fetchImageFromDepth(step) * self.circleTransform(diameter = 2, value = 0, jitter = 2) * self.circleTransform(diameter = 3, value = 0.6, jitter = 2)
                 # finalImages[i, k] = self.add_eyelashes(finalImages[i, k])
                 
                 finalCleanImages[i,k] = self.fetchImageFromDepth(step)
@@ -106,12 +124,16 @@ class VideoGenerator:
             self.applySaturationTransform(finalImages[i])
             self.applyBrightnessTransform(finalImages[i])
             self.applyBlurs(finalImages[i])
+            # self.addEyelashes(finalImages[i])
+            
                 
                 
-        return (self.normTwoValues(finalImages, -1, 1), self.normTwoValues(finalCleanImages, -1, 1), self.normTwoValues(finalMaps, -1, 1))
+        return (self.cleanNegativeNormalize(finalImages, 255), self.cleanNegativeNormalize(finalCleanImages, 255), self.cleanNegativeNormalize(finalMaps, self.topNm))
+    
+    
     
     def applyBrightnessTransform(self, imageSet):
-        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(0,0))
+        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))
 
 
        
@@ -122,7 +144,7 @@ class VideoGenerator:
             imageSet[frame] = new_image
     
     def applySaturationTransform(self, imageSet):
-        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(0,0))
+        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))
        
         for frame in frames:
             rgb = Image.fromarray(np.uint8(imageSet[frame]))
@@ -132,7 +154,7 @@ class VideoGenerator:
 
     
     def applyBlurs(self, imageSet):
-        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(0,0))
+        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))
         
         for frame in frames:
             imageSet[frame] = self.frameBlur(imageSet[frame])
@@ -229,15 +251,15 @@ class VideoGenerator:
                                                 repeatx=1024, 
                                                 repeaty=1024, 
                                                 base=40)
-            normalizedWorld = np.rint(self.normalize(np.reshape(world, (self.dim,self.dim,1)))*self.topNm)
+            normalizedWorld = self.randomRangeNormalize(np.rint(self.normalize(np.reshape(world, (self.dim,self.dim,1)))*self.topNm))
             depthMaps.append(normalizedWorld)
             images.append(self.addNoise(self.fetchImageFromDepth(normalizedWorld), std))
         
         images = np.array(images)
         depthMaps = np.array(depthMaps)
             
-        images = self.normalize(images[:,0:self.dim,0:self.dim,0:self.channels]) #needs to be fixed
-        depthMaps = self.normalize(depthMaps[:,0:self.dim,0:self.dim,0:1]) * self.topNm #needs to be fixed
+        images = images[:,0:self.dim,0:self.dim,0:self.channels] #needs to be fixed
+        depthMaps = depthMaps[:,0:self.dim,0:self.dim,0:1] #needs to be fixed
             
             
         return (images, depthMaps)
@@ -291,7 +313,7 @@ class VideoGenerator:
         
         img = np.ones((self.dim,self.dim,3))
         
-        center = (72 + randint(0, jitter),72 + randint(0, jitter))
+        center = (round(self.dim/2) + randint(0, jitter),round(self.dim/2) + randint(0, jitter))
 
 
         """
@@ -344,20 +366,45 @@ class VideoGenerator:
 
         return img_copy
     
-    def add_eyelashes(self, image):
-        height = image.shape[0]
-        width = image.shape[1]
-        x_current = 30
-        x_end = 100
-        y_start = 10
-        img = image
-        while(x_current < x_end):
-            x_shift = ceil(np.random.random() * 10)
-            x_offset = ceil(((np.random.random() * 2) - 1) * 20)
-            length = ceil(40 + ((np.random.random() * 2) - 1) * 20)
-            img = cv2.line(image, (x_current, y_start), (x_current - x_offset, y_start + length), (0,0,0), 2)
-            x_current += x_shift
-        return img
+    def addEyelashes(self, imageSet):
+        # frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))
+        frames = np.arange(len(imageSet))
+
+       
+        for frame in frames:
+            im_pil = Image.fromarray(np.uint8(imageSet[frame]))
+            
+            eyelash = Image.open(r"small_eyelash.png")
+            size = (float(eyelash.size[0]), float(eyelash.size[1]))
+            num_eyelashes = randint(8, 12)
+            for i in range(0, num_eyelashes):
+                rotated = eyelash.rotate(randint(-40, 40))
+                new_size = ceil(size * uniform(0.6, 1.8))
+                resized = rotated.resize(new_size)
+                x_coord = randint(25, 125)
+                y_coord = 10 + randint(-5, 5)
+                im_pil.paste(resized, (x_coord, y_coord), mask = resized)
+
+            imageSet[frame] = im_pil
+        # img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+#         im_pil = Image.fromarray(image)
+
+
+        
+#         return np.asarray(im_pil)
+        # height = image.shape[0]
+        # width = image.shape[1]
+        # x_current = 30
+        # x_end = 100
+        # y_start = 10
+        # img = image
+        # while(x_current < x_end):
+        #     x_shift = ceil(np.random.random() * 10)
+        #     x_offset = ceil(((np.random.random() * 2) - 1) * 20)
+        #     length = ceil(40 + ((np.random.random() * 2) - 1) * 20)
+        #     img = cv2.line(image, (x_current, y_start), (x_current - x_offset, y_start + length), (0,0,0), 2)
+        #     x_current += x_shift
+        # return img
         
         
   

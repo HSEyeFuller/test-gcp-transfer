@@ -6,9 +6,14 @@ import tensorflow as tf
 
 class Losses:
     
-    def __init__(self):
+    def __init__(self, topNm = 3500):
         self.loss_object = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         self.LAMBDA = 100
+        self.topNm = topNm
+        
+        
+    def reNormalize(self, data):
+        return data * (self.topNm/2) + self.topNm
     
 
     def generator_loss(self, disc_generated_output, gen_output, target):
@@ -21,10 +26,12 @@ class Losses:
 
       # mean absolute error
       l1_loss = tf.reduce_mean(tf.abs(target - gen_output))
+        
+      true_l1_loss = tf.reduce_mean(tf.abs(self.reNormalize(target) - self.reNormalize(gen_output)))
 
       total_gen_loss = gan_loss + (self.LAMBDA * l1_loss)
 
-      return total_gen_loss, gan_loss, l1_loss
+      return total_gen_loss, gan_loss, l1_loss, true_l1_loss
     
     def cycle_loss(self, disc_generated_output, gen_output, target, image, recoverImage):
       disc_generated_output = tf.cast(disc_generated_output, tf.float32)
