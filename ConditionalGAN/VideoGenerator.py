@@ -78,7 +78,6 @@ class VideoGenerator:
         
         
         for i in tqdm(range(numVideos)):
-            print("status", i)
             for k in range(self.frameRate * self.blinkDuration):
                 time = 1/self.frameRate * k
                 
@@ -91,7 +90,7 @@ class VideoGenerator:
                 
                 
                 finalImages[i,k] = self.fetchImageFromDepth(step) * self.circleTransform(diameter = 20, value = 0, jitter = 7) * self.circleTransform(diameter = 120, value = 0.6, jitter = 7)
-                finalImages[i, k] = self.add_eyelashes(finalImages[i, k])
+                # finalImages[i, k] = self.add_eyelashes(finalImages[i, k])
                 
                 finalCleanImages[i,k] = self.fetchImageFromDepth(step)
                 
@@ -109,10 +108,10 @@ class VideoGenerator:
             self.applyBlurs(finalImages[i])
                 
                 
-        return (finalImages, finalCleanImages, finalMaps)
+        return (self.normTwoValues(finalImages, -1, 1), self.normTwoValues(finalCleanImages, -1, 1), self.normTwoValues(finalMaps, -1, 1))
     
     def applyBrightnessTransform(self, imageSet):
-        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))
+        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(0,0))
 
 
        
@@ -123,7 +122,7 @@ class VideoGenerator:
             imageSet[frame] = new_image
     
     def applySaturationTransform(self, imageSet):
-        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))
+        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(0,0))
        
         for frame in frames:
             rgb = Image.fromarray(np.uint8(imageSet[frame]))
@@ -133,7 +132,7 @@ class VideoGenerator:
 
     
     def applyBlurs(self, imageSet):
-        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))
+        frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(0,0))
         
         for frame in frames:
             imageSet[frame] = self.frameBlur(imageSet[frame])

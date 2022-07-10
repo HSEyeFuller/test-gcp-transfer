@@ -17,7 +17,7 @@ class Database:
         
     def fetchInstance(self):
         try:
-            cred = credentials.Certificate('hseye-fff80-firebase-adminsdk-fm7tr-7eb812f1b5.json')
+            cred = credentials.Certificate('hseye-fff80-firebase-adminsdk-fm7tr-580deda573.json')
             initialize_app(cred, {
                 'storageBucket': 'hseye-fff80.appspot.com'
             })

@@ -64,6 +64,8 @@ class TrainingManager:
         self.summary_writer = tf.summary.create_file_writer(
   self.label + "/graph/")
         
+        self.training_losses = {'gen_total_loss': [], 'gen_gan_loss': [], 'gen_l1_loss': [], 'disc_loss': []}
+        
 
     @tf.function()
     def train_step(self,input_image, target, epoch):
@@ -91,6 +93,11 @@ class TrainingManager:
         tf.summary.scalar('gen_l1_loss', gen_l1_loss, step=epoch)
         tf.summary.scalar('disc_loss', disc_loss, step=epoch)
         
+        self.training_losses['gen_total_loss'].append(gen_total_loss)
+        self.training_losses['gen_gan_loss'].append(gen_gan_loss)
+        self.training_losses['gen_l1_loss'].append(gen_l1_loss)
+        self.training_losses['disc_loss'].append(disc_loss)
+        
 
     def fit(self, startingPoint = 0):
     
@@ -107,8 +114,8 @@ class TrainingManager:
       for epoch in range(startingPoint, self.EPOCHS):
         start = time.time()
 
-        self.evaluator.evaluateTrio(self.generator, imagesSubset, mapsSubset, 0, 48, fileName = "example_1/" + str(epoch), label = self.label)
-        self.evaluator.evaluateTrio(self.generator, imagesSubset, mapsSubset, 1, 48, fileName = "example_2/" +str(epoch), label = self.label)
+        self.evaluator.evaluateTrio(self.generator, self.tImages, self.tMaps, epoch, 48, fileName = "example_1/" + str(epoch), label = self.label)
+        # self.evaluator.evaluateTrio(self.generator, self.tImages, self.tMaps, 1, 48, fileName = "example_2/" +str(epoch), label = self.label)
         # Train
         for n in range(imagesSubset.shape[0]):
           image = imagesSubset[n]
@@ -157,7 +164,7 @@ class TrainingManager:
     def makeImageDirectory(self):
         try:
             os.makedirs(os.path.join(self.label, "example_1"))
-            os.makedirs(os.path.join(self.label, "example_2"))
+            # os.makedirs(os.path.join(self.label, "example_2"))
 
         except OSError as error:  
             print(error)

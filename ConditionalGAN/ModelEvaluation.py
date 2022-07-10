@@ -12,6 +12,10 @@ from math import sqrt
 from sklearn.metrics import mean_squared_error
 from tqdm import tqdm
 from multiprocessing import Pool
+import shutil
+import os
+import cv2
+import re
 
 
 class ModelEvaluation:
@@ -40,6 +44,155 @@ class ModelEvaluation:
             m = tf.keras.metrics.RootMeanSquaredError()
             m.update_state(predictions,targets)
             return m.result().numpy()
+        
+        
+        
+    def saveImage(self, image, fn, dim = 144):
+        data = np.reshape(image, (dim,dim,3))
+        plt.imshow(self.imRegulate(data), interpolation='nearest')
+        plt.savefig(f'tmp/{fn}.png')
+        
+        
+    def saveMap(self, image, fn, dim = 144):
+        pData = np.reshape(image, (dim,dim))
+
+        fig = plt.figure(figsize = (5,5))
+        ax1 = fig.add_subplot(projection='3d')
+        ax1.set_zlim(0, 3000)
+        x = np.arange(0, dim)
+        y = np.arange(0, dim)
+        X, Y = np.meshgrid(x, y)
+        surf = ax1.plot_surface(X, Y, pData, cmap = cm.coolwarm)
+
+        ax1.set_zlabel("Thickness" + " (" + "nm" + ")")
+        ax1.set_title('Patient Tear Film Thickness Profile')
+        
+        plt.savefig(f'tmp/{fn}.png')
+
+        
+    def imRegulate(self, data):
+        m = np.max(data)
+        mi = np.min(data)
+        norm = ((data - mi) / (m - mi))*255
+        return norm.astype(np.uint8)
+
+
+
+
+
+
+
+    def saveImages(self, imgSet):
+
+
+        try:
+            shutil.rmtree('tmp/')
+        except:
+            print("tmp/ does not exist")
+
+
+        try:
+            os.mkdir('tmp/')
+        except:
+            print("tmp/ exists")
+
+        try:
+            os.remove('tmp.zip')
+        except:
+            print("tmp.zip does not exist")
+        for frame in range(imgSet.shape[0]):
+            self.saveImage(imgSet[frame], frame)
+
+        shutil.make_archive('tmp', 'zip', 'tmp/')
+
+    def sorted_alphanumeric(self, data):
+        convert = lambda text: int(text) if text.isdigit() else text.lower()
+        alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
+        return sorted(data, key=alphanum_key)
+
+    def saveMaps(self, imgSet):
+        
+        print("SHAPE", imgSet.shape)
+
+
+        try:
+            shutil.rmtree('tmp/')
+        except:
+            print("tmp/ does not exist")
+
+
+        try:
+            os. mkdir('tmp/')
+        except:
+            print("tmp/ exists")
+
+        try:
+            os.remove('tmp.zip')
+        except:
+            print("tmp.zip does not exist")
+        for frame in range(imgSet.shape[0]):
+            self.saveMap(imgSet[frame], frame)
+            
+
+    def saveEyeVideo(self,imgSet, savePath):
+        self.saveImages(imgSet)
+        image_folder = 'tmp'
+
+        images = [img for img in self.sorted_alphanumeric(os.listdir(image_folder)) if img.endswith(".png")]
+        frame = cv2.imread(os.path.join(image_folder, images[0]))
+        height, width, layers = frame.shape
+
+        video = cv2.VideoWriter(f'{savePath}.avi', 0, 4, (width,height))
+
+        for image in images:
+            video.write(cv2.imread(os.path.join(image_folder, image)))
+
+        cv2.destroyAllWindows()
+        video.release()
+        
+        
+        # self.convert_avi_to_mp4(f'{savePath}.avi', f'{savePath}.mp4')
+
+        
+    def convert_avi_to_mp4(self, avi_file_path, output_name):
+        os.popen("ffmpeg -i '{input}' -ac 2 -b:v 2000k -c:a aac -c:v libx264 -b:a 160k -vprofile high -bf 0 -strict experimental -f mp4 '{output}'".format(input = avi_file_path, output = output_name))
+        os.popen("rm '{input}'".format(input = avi_file_path))
+        return True
+        
+        
+    def saveMapVideo(self, imgSet, savePath):
+        self.saveMaps(imgSet)
+        image_folder = 'tmp'
+
+        images = [img for img in self.sorted_alphanumeric(os.listdir(image_folder)) if img.endswith(".png")]
+        frame = cv2.imread(os.path.join(image_folder, images[0]))
+        height, width, layers = frame.shape
+
+        video = cv2.VideoWriter(f'{savePath}.avi', 0, 1, (width,height))
+
+        for image in images:
+            video.write(cv2.imread(os.path.join(image_folder, image)))
+
+        cv2.destroyAllWindows()
+        video.release()
+        
+        # self.convert_avi_to_mp4(f'{savePath}.avi', f'{savePath}.mp4')
+        
+        
+        
+    def unpack(self, tiles, dim = 144):
+        depth = round(tiles.shape[0]/dim)
+        channels = tiles.shape[2]
+        output = np.zeros((depth, dim, dim, channels))
+        for i in range(depth):
+            output[i] = tiles[i*dim:(i+1)*dim,:]
+            
+            
+        return output
+            
+
+
+
 
     def evaluateTrio(self, model, images, maps, index, download = True, noise = False, std = 0.1, fileName = "tmp.png", label = "general"):
 
@@ -49,8 +202,7 @@ class ModelEvaluation:
             image = images[index]
             
             
-            
-            
+        
             
             
             if noise:
@@ -61,6 +213,13 @@ class ModelEvaluation:
             predMap = model(image[None,:,:,:], training=True).numpy()
             t1 = time.time()
             
+            
+            
+            self.saveEyeVideo(self.unpack(image), label + "/" + fileName + "eye")
+            self.saveMapVideo(self.unpack(self.normalize(tmpMap) * self.topNm), label + "/" + fileName + "input")
+            self.saveMapVideo(self.unpack(self.normalize(predMap[0]) * self.topNm), label + "/" + fileName + "output")
+            
+            
             predMap = self.normalize(predMap[0]) * self.topNm
             tmpMap = self.normalize(tmpMap) * self.topNm
             
@@ -70,6 +229,8 @@ class ModelEvaluation:
             tmpMap = tmpMap[0:144,:,:]
             image = image[0:144,:,:]
             
+            
+     
             
 
             #DISPLAY/DOWNLOAD
@@ -138,19 +299,7 @@ class ModelEvaluation:
                 return "Completed"
 
 
-    def saveMap(self,depthMap, filepath, dim = 51):
 
-            fig = plt.figure(figsize = (5,5))
-            ax1 = fig.add_subplot(projection='3d')
-
-            x = np.arange(0, dim)
-            y = np.arange(0, dim)
-            X, Y = np.meshgrid(x, y)
-            pData = np.reshape(depthMap[None,:,:,:], (dim,dim))
-            surf = ax1.plot_surface(X, Y, pData, cmap = cm.coolwarm)
-
-            plt.savefig(filepath)
-    
     def showMap(self,depthMap, dim = 48):
 
             fig = plt.figure(figsize = (5,5))

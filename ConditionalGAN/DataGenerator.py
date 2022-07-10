@@ -21,7 +21,7 @@ class DataGenerator:
     
     def __init__(self, hsi = True, topNm = 1000):
         self.dim = 16 if hsi else 3
-        self.colorMap = np.array(scipy.io.loadmat('HSIColorMap.mat' if hsi else 'EyeRGBMap.mat')['colorMap']).reshape(5001,self.dim)
+        self.colorMap = np.array(scipy.io.loadmat('HSIColorMap.mat' if hsi else 'EyeRGBMap.mat')['ColorMap']).reshape(5001,self.dim)
         self.topNm = topNm
         
     def normalize(self, data):
