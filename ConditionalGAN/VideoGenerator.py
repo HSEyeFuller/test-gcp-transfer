@@ -377,8 +377,8 @@ class VideoGenerator:
             size = eyelash.size
             num_eyelashes = randint(8, 12)
             for i in range(0, num_eyelashes):
-                rotated = eyelash.rotate(randint(-30, 30))
-                scaleW = uniform(0.5, 0.8)
+                rotated = eyelash.rotate(randint(-40, 40))
+                scaleW = uniform(0.5, 0.6)
                 scaleH = uniform(0.6, 1.5)
                 new_size = (ceil(size[0] * scaleW), ceil(size[1] * scaleH))
                 resized = rotated.resize(new_size)
