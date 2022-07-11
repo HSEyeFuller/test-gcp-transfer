@@ -108,7 +108,6 @@ class VideoGenerator:
                 step = self.fetchStep(time, nMap, dMap)
                 
                 finalImages[i,k] = self.fetchImageFromDepth(step) * self.circleTransform(diameter = 2, value = 0, jitter = 2) * self.circleTransform(diameter = 3, value = 0.6, jitter = 2)
-                # finalImages[i, k] = self.add_eyelashes(finalImages[i, k])
                 
                 finalCleanImages[i,k] = self.fetchImageFromDepth(step)
                 
@@ -124,7 +123,7 @@ class VideoGenerator:
             self.applySaturationTransform(finalImages[i])
             self.applyBrightnessTransform(finalImages[i])
             self.applyBlurs(finalImages[i])
-            # self.addEyelashes(finalImages[i])
+            self.addEyelashes(finalImages[i])
             
                 
                 
@@ -375,11 +374,13 @@ class VideoGenerator:
             im_pil = Image.fromarray(np.uint8(imageSet[frame]))
             
             eyelash = Image.open(r"small_eyelash.png")
-            size = (float(eyelash.size[0]), float(eyelash.size[1]))
+            size = eyelash.size
             num_eyelashes = randint(8, 12)
             for i in range(0, num_eyelashes):
-                rotated = eyelash.rotate(randint(-40, 40))
-                new_size = ceil(size * uniform(0.6, 1.8))
+                rotated = eyelash.rotate(randint(-30, 30))
+                scaleW = uniform(0.5, 0.8)
+                scaleH = uniform(0.6, 1.5)
+                new_size = (ceil(size[0] * scaleW), ceil(size[1] * scaleH))
                 resized = rotated.resize(new_size)
                 x_coord = randint(25, 125)
                 y_coord = 10 + randint(-5, 5)
