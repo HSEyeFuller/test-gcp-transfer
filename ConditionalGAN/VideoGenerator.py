@@ -106,8 +106,18 @@ class VideoGenerator:
                 
                 
                 step = self.fetchStep(time, nMap, dMap)
-                
-                finalImages[i,k] = self.fetchImageFromDepth(step) * self.circleTransform(diameter = 2, value = 0, jitter = 2) * self.circleTransform(diameter = 3, value = 0.6, jitter = 2)
+          
+                finalImages[i,k] = self.fetchImageFromDepth(step)
+                imageLength = finalImages[i,k].shape[0]
+                innerRatio = 20.0/144.0
+                outerRatio = 120.0/144.0
+                innerDiameter = round(imageLength * innerRatio)
+                outerDiameter = round(imageLength * outerRatio)
+
+                finalImages[i,k] = finalImages[i,k] * self.circleTransform(diameter = innerDiameter, value = 0, jitter = 7)
+                finalImages[i,k] = finalImages[i,k] * self.circleTransform(diameter = outerDiameter, value = 0.6, jitter = 7)
+
+                # finalImages[i,k] = self.fetchImageFromDepth(step) * self.circleTransform(diameter = 2, value = 0, jitter = 2) * self.circleTransform(diameter = 3, value = 0.6, jitter = 2)
                 
                 finalCleanImages[i,k] = self.fetchImageFromDepth(step)
                 
@@ -387,6 +397,9 @@ class VideoGenerator:
                 im_pil.paste(resized, (x_coord, y_coord), mask = resized)
 
             imageSet[frame] = im_pil
+            
+    # def addNoise(self, image):
+        
         # img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 #         im_pil = Image.fromarray(image)
 
