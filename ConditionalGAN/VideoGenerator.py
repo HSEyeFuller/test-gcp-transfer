@@ -65,7 +65,7 @@ class VideoGenerator:
         start = randint(0,self.topNm-1000)
         rng = randint(600,1000)
         
-        return self.normTwoValues(image, start, rng)
+        return self.normTwoValues(image, start, rng + start)
     
     def fr(self, data):
         print(np.min(data), np.max(data))
@@ -109,29 +109,20 @@ class VideoGenerator:
           
                 finalImages[i,k] = self.fetchImageFromDepth(step)
                 imageLength = finalImages[i,k].shape[0]
-                innerRatio = 20.0/144.0
-                outerRatio = 120.0/144.0
-                innerDiameter = round(imageLength * innerRatio)
-                outerDiameter = round(imageLength * outerRatio)
-
-                finalImages[i,k] = finalImages[i,k] * self.circleTransform(diameter = innerDiameter, value = 0, jitter = 7)
-                finalImages[i,k] = finalImages[i,k] * self.circleTransform(diameter = outerDiameter, value = 0.6, jitter = 7)
-
-                # finalImages[i,k] = self.fetchImageFromDepth(step) * self.circleTransform(diameter = 2, value = 0, jitter = 2) * self.circleTransform(diameter = 3, value = 0.6, jitter = 2)
+                innerDiameter = round(self.dim * 0.139)
+                outerDiameter = round(self.dim * 0.833)
+                finalImages[i,k] = finalImages[i,k] * self.circleTransform(diameter = innerDiameter, value = 0, jitter = 1)
+                finalImages[i,k] = finalImages[i,k] * self.circleTransform(diameter = outerDiameter, value = 0.6, jitter = 1)
                 
                 finalCleanImages[i,k] = self.fetchImageFromDepth(step)
                 
                 
                 finalMaps[i,k] = step
-                
-                #saturation --> 0.5 1 (normal)
-                #brightness --> 0.5 1 (normal)
-                #randomly apply transforms --> randomn decimal (inclusive)
-                #transform should be video wide
 
             
             self.applySaturationTransform(finalImages[i])
             self.applyBrightnessTransform(finalImages[i])
+            self.addGaussianNoise(finalImages[i])
             self.applyBlurs(finalImages[i])
             self.addEyelashes(finalImages[i])
             
@@ -219,12 +210,12 @@ class VideoGenerator:
         normalized_x = (inp - average) / rng;
         return normalized_x;
 
-    def fetchImageFromDepth(self, depth):
+    def fetchImageFromDepth(self, depth, std = 0.01):
         newArray = np.zeros((self.dim,self.dim,self.channels))
         for i in range(self.dim):
             for k in range(self.dim):
                 newArray[i][k] = self.colorMap[int(depth[i][k])]
-        return newArray
+        return self.addNoise(newArray, std)
     
     def fetchTensorFromDepth(self, depth):
         newArray = tf.zeros((self.dim,self.dim,self.channels))
@@ -234,7 +225,7 @@ class VideoGenerator:
         return newArray
         
 
-    def generatePerlinData(self, numData, std = 0):
+    def generatePerlinData(self, numData, std = 0.01):
         shape = (self.dim,self.dim)
         scale = 100
         octaves = 6
@@ -275,7 +266,6 @@ class VideoGenerator:
 
 
     def generateGaussianData(self, numData, std = 0):
-        
         maps = np.copy(self.gaussMaps)
             
                     
@@ -283,7 +273,6 @@ class VideoGenerator:
         gImages = []
 
         for i in range(numData):
-                        
             maps[i] = np.rint(self.normalize(maps[i])*self.topNm)
             gImages.append(self.addNoise(self.fetchImageFromDepth(maps[i]), std))
             
@@ -384,41 +373,67 @@ class VideoGenerator:
             im_pil = Image.fromarray(np.uint8(imageSet[frame]))
             
             eyelash = Image.open(r"small_eyelash.png")
+            eyelash = eyelash.resize((round(self.dim * 0.111), round(self.dim * 0.257)))
             size = eyelash.size
+
             num_eyelashes = randint(8, 12)
             for i in range(0, num_eyelashes):
                 rotated = eyelash.rotate(randint(-40, 40))
                 scaleW = uniform(0.5, 0.6)
-                scaleH = uniform(0.6, 1.5)
+                scaleH = uniform(0.6, 1.2)
                 new_size = (ceil(size[0] * scaleW), ceil(size[1] * scaleH))
                 resized = rotated.resize(new_size)
-                x_coord = randint(25, 125)
-                y_coord = 10 + randint(-5, 5)
+                x_coord = randint(round(0.174 * self.dim), round(0.868 * self.dim))
+                y_coord = round(0.0694 * self.dim) + randint(-5, 5)
+
                 im_pil.paste(resized, (x_coord, y_coord), mask = resized)
 
             imageSet[frame] = im_pil
             
-    # def addNoise(self, image):
-        
-        # img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-#         im_pil = Image.fromarray(image)
+    def addGaussianNoise(self, imageSet):
+        frames = np.arange(len(imageSet))
 
+       
+        for frame in frames:
+            image = imageSet[frame]
+            # if noise_typ == "gauss":
+            row,col,ch= image.shape
+            mean = 0
+            var = 0.1
+            sigma = uniform(0.05, 0.15)
+            gauss = np.random.normal(mean,sigma,(row,col,ch))
+            gauss = gauss.reshape(row,col,ch)
+            noisy = image + gauss
+        return noisy
+#         elif noise_typ == "s&p":
+#             row,col,ch = image.shape
+#             s_vs_p = 0.5
+#             amount = 0.004
+#             out = np.copy(image)
+#             # Salt mode
+#             num_salt = np.ceil(amount * image.size * s_vs_p)
+#             coords = [np.random.randint(0, i - 1, int(num_salt))
+#                 for i in image.shape]
+#                     out[coords] = 1
 
-        
-#         return np.asarray(im_pil)
-        # height = image.shape[0]
-        # width = image.shape[1]
-        # x_current = 30
-        # x_end = 100
-        # y_start = 10
-        # img = image
-        # while(x_current < x_end):
-        #     x_shift = ceil(np.random.random() * 10)
-        #     x_offset = ceil(((np.random.random() * 2) - 1) * 20)
-        #     length = ceil(40 + ((np.random.random() * 2) - 1) * 20)
-        #     img = cv2.line(image, (x_current, y_start), (x_current - x_offset, y_start + length), (0,0,0), 2)
-        #     x_current += x_shift
-        # return img
+#           # Pepper mode
+#           num_pepper = np.ceil(amount* image.size * (1. - s_vs_p))
+#           coords = [np.random.randint(0, i - 1, int(num_pepper))
+#                   for i in image.shape]
+#           out[coords] = 0
+#           return out
+#       elif noise_typ == "poisson":
+#           vals = len(np.unique(image))
+#           vals = 2 ** np.ceil(np.log2(vals))
+#           noisy = np.random.poisson(image * vals) / float(vals)
+#           return noisy
+#       elif noise_typ =="speckle":
+#           row,col,ch = image.shape
+#           gauss = np.random.randn(row,col,ch)
+#           gauss = gauss.reshape(row,col,ch)        
+#           noisy = image + image * gauss
+#           return noisy
+
         
         
   
