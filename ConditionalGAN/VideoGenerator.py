@@ -31,6 +31,7 @@ class VideoGenerator:
         self.gaussMaps = np.load("20kGauss.npy")
         self.frameRate = frameRate
         self.blinkDuration = blinkDuration
+        self.stdGlobal = uniform(0.01, 0.1)
         
         
     def cleanNegativeNormalize(self, data, top):
@@ -124,7 +125,7 @@ class VideoGenerator:
             self.applyBrightnessTransform(finalImages[i])
             self.addGaussianNoise(finalImages[i])
             self.applyBlurs(finalImages[i])
-            self.addEyelashes(finalImages[i])
+            # self.addEyelashes(finalImages[i])
             
                 
                 
@@ -215,7 +216,7 @@ class VideoGenerator:
         for i in range(self.dim):
             for k in range(self.dim):
                 newArray[i][k] = self.colorMap[int(depth[i][k])]
-        return self.addNoise(newArray, std)
+        return self.addNoise(newArray, self.stdGlobal)
     
     def fetchTensorFromDepth(self, depth):
         newArray = tf.zeros((self.dim,self.dim,self.channels))
@@ -253,7 +254,7 @@ class VideoGenerator:
                                                 base=40)
             normalizedWorld = self.randomRangeNormalize(np.rint(self.normalize(np.reshape(world, (self.dim,self.dim,1)))*self.topNm))
             depthMaps.append(normalizedWorld)
-            images.append(self.addNoise(self.fetchImageFromDepth(normalizedWorld), std))
+            images.append(self.addNoise(self.fetchImageFromDepth(normalizedWorld), self.stdGlobal))
         
         images = np.array(images)
         depthMaps = np.array(depthMaps)
@@ -400,7 +401,7 @@ class VideoGenerator:
             row,col,ch= image.shape
             mean = 0
             var = 0.1
-            sigma = uniform(0.05, 0.15)
+            sigma = uniform(0.01, 0.1)
             gauss = np.random.normal(mean,sigma,(row,col,ch))
             gauss = gauss.reshape(row,col,ch)
             noisy = image + gauss
