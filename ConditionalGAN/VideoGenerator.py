@@ -125,7 +125,7 @@ class VideoGenerator:
             self.applyBrightnessTransform(finalImages[i])
             self.addGaussianNoise(finalImages[i])
             self.applyBlurs(finalImages[i])
-            # self.addEyelashes(finalImages[i])
+            self.addEyelashes(finalImages[i])
             
                 
                 
@@ -156,9 +156,14 @@ class VideoGenerator:
     
     def applyBlurs(self, imageSet):
         frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))
-        
-        for frame in frames:
-            imageSet[frame] = self.frameBlur(imageSet[frame])
+        for i, frame in enumerate(imageSet):
+            if(i in frames):
+                imageSet[i] = self.frameBlur(frame)
+            else:
+                imageSet[i] = self.smallBlur(frame)
+    
+    def smallBlur(self, image):
+        return cv2.blur(image, (10,10))
             
     
         
