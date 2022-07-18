@@ -83,7 +83,7 @@ class VideoGenerator:
 
         
         
-        for i in tqdm(range(numVideos)):
+        for i in range(numVideos):
             
             image, dMap = self.generatePerlinData(1) #0, 255 & 0,1
             
@@ -112,8 +112,8 @@ class VideoGenerator:
                 imageLength = finalImages[i,k].shape[0]
                 innerDiameter = round(self.dim * 0.139)
                 outerDiameter = round(self.dim * 0.833)
-                finalImages[i,k] = finalImages[i,k] * self.circleTransform(diameter = innerDiameter, value = 0, jitter = 1)
-                finalImages[i,k] = finalImages[i,k] * self.circleTransform(diameter = outerDiameter, value = 0.6, jitter = 1)
+                # finalImages[i,k] = finalImages[i,k] * self.circleTransform(diameter = innerDiameter, value = 0, jitter = 1)
+                # finalImages[i,k] = finalImages[i,k] * self.circleTransform(diameter = outerDiameter, value = 1.5, jitter = 1)
                 
                 finalCleanImages[i,k] = self.fetchImageFromDepth(step)
                 
@@ -135,6 +135,7 @@ class VideoGenerator:
     
     def applyBrightnessTransform(self, imageSet):
         frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))
+        # frames = np.arange(len(imageSet))
 
 
        
@@ -146,7 +147,7 @@ class VideoGenerator:
     
     def applySaturationTransform(self, imageSet):
         frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))
-       
+        # frames = np.arange(len(imageSet))
         for frame in frames:
             rgb = Image.fromarray(np.uint8(imageSet[frame]))
             enhancer = ImageEnhance.Color(rgb)
@@ -218,10 +219,23 @@ class VideoGenerator:
 
     def fetchImageFromDepth(self, depth, std = 0.01):
         newArray = np.zeros((self.dim,self.dim,self.channels))
+        
+        flat = depth.flatten().astype(np.uint8)
+        newArray = self.colorMap[flat].reshape(self.dim, self.dim, 3)
+        
+        return newArray
+        
+        
+#         for i in range(self.dim):
+#             newArray[i] = self.colorMap[depth[i].astype(int)].reshape((144,3))
+#         return self.addNoise(newArray, self.stdGlobal)
+        
         for i in range(self.dim):
             for k in range(self.dim):
                 newArray[i][k] = self.colorMap[int(depth[i][k])]
         return self.addNoise(newArray, self.stdGlobal)
+    
+    
     
     def fetchTensorFromDepth(self, depth):
         newArray = tf.zeros((self.dim,self.dim,self.channels))
