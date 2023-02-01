@@ -11,7 +11,6 @@ import os
 from tqdm import tqdm
 import numpy as np
 from PIL import Image
-from Database import Database
 import multiprocessing
 import concurrent.futures
 from pathos.multiprocessing import ProcessingPool as Pool
@@ -36,7 +35,6 @@ class TrainingManager:
         
         self.topNm = trainingDict["topNm"]
         
-        self.database = Database()
         self.dataGenerator = DataGenerator(self.hsi, self.topNm)
         self.losses = Losses()
         self.evaluator = ModelEvaluation(self.topNm)
@@ -213,9 +211,7 @@ class TrainingManager:
                 break
             
         
-        
-#         self.database.setOptimumCheckpoint(upperLimit, self.label)
-
+    
         return upperLimit
     
     def evaluateCheckpoints(self, upperLimit, noise = 0.1):

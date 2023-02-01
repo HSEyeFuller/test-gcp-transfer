@@ -107,6 +107,7 @@ class VideoGenerator:
             self.applySaturationTransform(finalImages[i])
             self.applyBrightnessTransform(finalImages[i])
             self.applyBlurs(finalImages[i])
+            self.addEyelashes(finalImages[i])
                 
                 
         return (finalImages, finalCleanImages, finalMaps)
@@ -346,19 +347,28 @@ class VideoGenerator:
         return img_copy
     
     def add_eyelashes(self, image):
-        height = image.shape[0]
-        width = image.shape[1]
-        x_current = 30
-        x_end = 100
-        y_start = 10
-        img = image
-        while(x_current < x_end):
-            x_shift = ceil(np.random.random() * 10)
-            x_offset = ceil(((np.random.random() * 2) - 1) * 20)
-            length = ceil(40 + ((np.random.random() * 2) - 1) * 20)
-            img = cv2.line(image, (x_current, y_start), (x_current - x_offset, y_start + length), (0,0,0), 2)
-            x_current += x_shift
-        return img
+
+        img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        im_pil = Image.fromarray(img)
+
+        img2 = Image.open(r"sample_eyelash")
+  
+        im_pil.paste(img2, (0,0), mask = img2)
+        
+        return np.asarray(im_pil)
+#         height = image.shape[0]
+#         width = image.shape[1]
+#         x_current = 30
+#         x_end = 100
+#         y_start = 10
+#         img = image
+#         while(x_current < x_end):
+#             x_shift = ceil(np.random.random() * 10)
+#             x_offset = ceil(((np.random.random() * 2) - 1) * 20)
+#             length = ceil(40 + ((np.random.random() * 2) - 1) * 20)
+#             img = cv2.line(image, (x_current, y_start), (x_current - x_offset, y_start + length), (0,0,0), 2)
+#             x_current += x_shift
+#         return img
         
         
   
