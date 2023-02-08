@@ -18,11 +18,10 @@ import pathos.multiprocessing
 
 class TrainingManager:
     
-    def __init__(self, trainingDict, images, maps, tImages, tMaps, dataset = None):
+    def __init__(self, trainingDict, images, maps, tImages, tMaps):
         models = Model(trainingDict)
         topNm = trainingDict["topNm"]
 
-        self.dataset = dataset
         
         self.label = trainingDict["name"] #name of training job
         self.generator, self.discriminator = self.extractModels(models) #models
@@ -51,10 +50,6 @@ class TrainingManager:
               self.label + "/graph/") #write summary to TensorBoard. 
         
 
-        
-
-
-
     @tf.function()
     def train_step(self,input_image, target, epoch):
       with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
@@ -81,29 +76,6 @@ class TrainingManager:
         tf.summary.scalar('gen_l1_loss', gen_l1_loss, step=epoch)
         tf.summary.scalar('disc_loss', disc_loss, step=epoch)
         
-        
-    def tfFit(self):
-      start = time.time()
-
-      for step, (input_image, target) in self.dataset.repeat().take(self.EPOCHS).enumerate():
-        if (step) % 1000 == 0:
-
-          if step != 0:
-            print(f'Time taken for 1000 steps: {time.time()-start:.2f} sec\n')
-
-          start = time.time()
-
-          print(f"Step: {step//1000}k")
-
-        self.train_step(input_image[tf.newaxis,...], target[tf.newaxis,...], step)
-
-        # Training step
-        if (step+1) % 10 == 0:
-          print('.', end='', flush=True)
-
-
-      
-        
 
     def fit(self, startingPoint = 0):
       self.makeImageDirectory()
@@ -123,7 +95,7 @@ class TrainingManager:
           image = image[None,:,:,:]
           tmpMap = self.maps[n]
           tmpMap = tmpMap[None,:,:,:]
-          self.train_step(image, tmpMap, epoch)
+          self.train_step(image, tmpMap , epoch)
         print()
 
         #save checkpoint
@@ -133,11 +105,8 @@ class TrainingManager:
         
                                                             time.time()-start))
         #save model
-        # self.saveModel()
+        self.saveModel()
       
-    
-    def fetchRange(self, array, message):
-        print(message, np.min(array), np.max(array))
     
     #save a specific image from the provided testing set
     def runInference(self, index, std = 0.1):

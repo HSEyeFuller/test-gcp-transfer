@@ -14,10 +14,6 @@ import scipy.io
 from tqdm import tqdm
 import tensorflow as tf
 import time
-from PIL import Image, ImageEnhance
-from random import random, uniform, randint, sample
-import cv2
-
 # In[2]:
 
 
@@ -39,7 +35,7 @@ class DataGenerator:
     def addNoise(self, image, std):
         row,col,ch= image.shape
         mean = 0
-        sigma = std
+        sigma = stds
 
         gauss = np.random.normal(mean,sigma,(row,col,ch))
         gauss = gauss.reshape(row,col,ch)
@@ -109,13 +105,7 @@ class DataGenerator:
                                                 base=40)
             normalizedWorld = np.rint(self.normalize(np.reshape(world, (144,144,1)))*self.topNm)
             depthMaps.append(normalizedWorld)
-            
-            noisy = self.addNoise(self.fetchImageFromDepth(normalizedWorld), std)
-            noisy = self.applySaturationTransform(noisy)
-            noisy = self.applyBrightnessTransform(noisy)
-            noisy = self.frameBlur(noisy)
-            
-            images.append(noisy)
+            images.append(self.addNoise(self.fetchImageFromDepth(normalizedWorld), std))
         
         images = np.array(images)
         depthMaps = np.array(depthMaps)
@@ -171,46 +161,5 @@ class DataGenerator:
         
         return (gImages, gMaps, pImages, pMaps)
         
-    
-    def applyBrightnessTransform(self, image):
-        rgb = Image.fromarray(np.uint8(image))
-        enhancer = ImageEnhance.Brightness(rgb)
-        new_image = enhancer.enhance(np.random.random() * 0.5 + 0.5)
-        return np.asarray(new_image)
-    
-    def applySaturationTransform(self, image):
-        rgb = Image.fromarray(np.uint8(image))
-        enhancer = ImageEnhance.Color(rgb)
-        new_image = enhancer.enhance(np.random.random() * 0.5 + 0.5)
-        return np.asarray(new_image)
 
-    
-    
-    def frameBlur(self, img):
-        h_kernel_size = randint(1,5)
-        v_kernel_size = randint(1,5)
-
-        # Create the vertical kernel.
-        kernel_v = np.zeros((v_kernel_size, v_kernel_size))
-
-        # Create a copy of the same for creating the horizontal kernel.
-        kernel_h = np.zeros((h_kernel_size,h_kernel_size))
-
-        # Fill the middle row with ones.
-        kernel_v[:, int((v_kernel_size - 1)/2)] = np.ones(v_kernel_size)
-        kernel_h[int((h_kernel_size - 1)/2), :] = np.ones(h_kernel_size)
-
-        # Normalize.
-        kernel_v /= v_kernel_size
-        kernel_h /= h_kernel_size
-
-        # Apply the vertical kernel.
-        vertical_mb = cv2.filter2D(img, -1, kernel_v)
-
-        # Apply the horizontal kernel.
-        horizontal_mb = cv2.filter2D(vertical_mb, -1, kernel_h)
-        
-        return horizontal_mb    
-        
-        
         
