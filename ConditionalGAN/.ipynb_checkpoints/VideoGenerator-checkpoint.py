@@ -56,12 +56,18 @@ class VideoGenerator:
     def fetchStep(self, time, alpha, initial_frame):
         return np.divide(initial_frame,(1 + alpha*sqrt(time)))
     
+    def chatNormalize(self, arr):
+        arr = arr.astype('float32')
+        arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
+        return 2.0 * arr - 1.0
+    
     def generateVideos(self, numVideos, variance = 0.12):
         image, dMap = self.generatePerlinData(1)
         _, nMap = self.generateGaussianData(1)
         image = image[0]
         dMap = dMap[0,:,:,0]
         nMap = nMap[0,:,:,0]
+        
         
         alpha = uniform(0.16,0.28)
         
@@ -110,7 +116,7 @@ class VideoGenerator:
             # self.addEyelashes(finalImages[i])
                 
                 
-        return (finalImages, finalCleanImages, finalMaps)
+        return (self.chatNormalize(finalImages), finalCleanImages, self.chatNormalize(finalMaps))
     
     def applyBrightnessTransform(self, imageSet):
         frames = sample(range(0,self.frameRate * self.blinkDuration-1), randint(3,6))

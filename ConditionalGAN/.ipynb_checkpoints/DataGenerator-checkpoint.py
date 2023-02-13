@@ -14,6 +14,11 @@ import scipy.io
 from tqdm import tqdm
 import tensorflow as tf
 import time
+from PIL import Image, ImageEnhance
+from random import random, uniform, randint, sample
+import cv2
+import copy
+
 # In[2]:
 
 
@@ -21,6 +26,7 @@ class DataGenerator:
     
     def __init__(self, topNm = 1000):
         self.dim = 3
+        self.width = 144
         mapfile = scipy.io.loadmat('EyeRGBMap.mat')
         # print(mapfile.keys())
         self.colorMap = np.array(mapfile['ColorMap']).reshape(5001,self.dim)
@@ -32,10 +38,20 @@ class DataGenerator:
         norm = (data - mi) / (m - mi)
         return norm
     
+    
+    def normalize_array(self, array):
+        
+        lower_bound = randint(500, 1800)
+        upper_bound = lower_bound + randint(200, 700)
+        
+        minimum, maximum = np.min(array), np.max(array)
+        array = (array - minimum) * (upper_bound - lower_bound) / (maximum - minimum) + lower_bound
+        return np.rint(np.clip(array, lower_bound, upper_bound))
+    
     def addNoise(self, image, std):
         row,col,ch= image.shape
         mean = 0
-        sigma = stds
+        sigma = std
 
         gauss = np.random.normal(mean,sigma,(row,col,ch))
         gauss = gauss.reshape(row,col,ch)
@@ -62,25 +78,34 @@ class DataGenerator:
         return normalized_x;
 
     def fetchImageFromDepth(self, depth):
-        newArray = np.zeros((144,144,self.dim))
-        for i in range(144):
-            for k in range(144):
+        newArray = np.zeros((self.width,self.width,self.dim))
+        for i in range(self.width):
+            for k in range(self.width):
                 newArray[i][k] = self.colorMap[int(depth[i][k])]
         return newArray
     
     def fetchTensorFromDepth(self, depth):
-        newArray = tf.zeros((144,144,self.dim))
-        for i in range(144):
-            for k in range(144):
+        newArray = tf.zeros((self.width,self.width,self.dim))
+        for i in range(self.width):
+            for k in range(self.width):
                 print(tf.gather_nd(depth, [[i,k]]))
                 newArray[i][k] = self.colorMap[tf.gather_nd(depth, [[i,k]])]
         return newArray
+    
+    
+    def normalize_maps(self, arr):
+        arr = np.array(arr, dtype=np.float32)
+        arr = 2 * (arr - 0) / (2500 - 0) - 1
+        return arr
+
+    def normalize_images(self, arr):
+        arr = np.array(arr, dtype=np.float32)
+        arr = 2 * (arr - 0) / (255 - 0) - 1
+        return arr
         
 
     def generatePerlinData(self, numData, std = 0):
-        shape = (144,144)
-        scale = 100
-        octaves = 6
+        shape = (self.width,self.width)
         persistence = 0.5
         lacunarity = 1.8
 
@@ -92,6 +117,8 @@ class DataGenerator:
         for z in tqdm(range(numData)):
             world = np.zeros(shape)
             randZ = random()
+            octaves = randint(4, 6) #more octaves = more "noise" in depth map. less octaves = smoother, simpler
+            scale = randint(200, 400) #more scale = less patterning. 
             for i in range(shape[0]):
                 for j in range(shape[1]):
                     world[i][j] = noise.pnoise3(i/scale, 
@@ -103,15 +130,22 @@ class DataGenerator:
                                                 repeatx=1024, 
                                                 repeaty=1024, 
                                                 base=40)
-            normalizedWorld = np.rint(self.normalize(np.reshape(world, (144,144,1)))*self.topNm)
+            normalizedWorld = self.normalize_array(np.reshape(world, (self.width,self.width,1)) * self.topNm) #yields our SCALED array
             depthMaps.append(normalizedWorld)
-            images.append(self.addNoise(self.fetchImageFromDepth(normalizedWorld), std))
+            
+            noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld)) * self.circleTransform(diameter = 35, value = 0, jitter = 7) * self.circleTransform(diameter = 120, value = 0.6, jitter = 7)
+            noisy = self.applySaturationTransform(noisy)
+            noisy = self.applyBrightnessTransform(noisy)
+            noisy = self.frameBlur(noisy)
+                        
+            
+            images.append(noisy)
         
         images = np.array(images)
         depthMaps = np.array(depthMaps)
             
-        images = self.negativeNormalize(self.normalize(images[:,0:144,0:144,0:self.dim]))
-        depthMaps = self.negativeNormalize(self.normalize(depthMaps[:,0:144,0:144,0:1]))
+        images = self.normalize_images(images[:,0:self.width,0:self.width,0:self.dim])
+        depthMaps = self.normalize_maps(depthMaps[:,0:self.width,0:self.width,0:1])
             
             
         return (images, depthMaps)
@@ -129,15 +163,15 @@ class DataGenerator:
         for i in tqdm(range(numData)):
                         
             maps[i] = np.rint(self.normalize(maps[i])*self.topNm)
-            gImages.append(self.addNoise(self.fetchImageFromDepth(maps[i]), std))
+            gImages.append(self.add_gaussian_noise(self.fetchImageFromDepth(maps[i])))
             
         gImages = np.array(gImages)
         maps = np.array(maps)
         
             
-        gImages = self.negativeNormalize(self.normalize(gImages[:,0:144,0:144,0:self.dim]))
-        maps = self.negativeNormalize(self.normalize(maps[:,0:144,0:144]))
-        return (gImages, maps.reshape((numData,144,144,1)))
+        gImages = self.negativeNormalize(self.normalize(gImages[:,0:self.width,0:self.width,0:self.dim]))
+        maps = self.negativeNormalize(self.normalize(maps[:,0:self.width,0:self.width]))
+        return (gImages, maps.reshape((numData,self.width,self.width,1)))
     
     
     def generateMixedNoise(self, numPerlin, numGaussian, std = 0):
@@ -161,5 +195,110 @@ class DataGenerator:
         
         return (gImages, gMaps, pImages, pMaps)
         
+    
+    def applyBrightnessTransform(self, image):
+        rgb = Image.fromarray(np.uint8(image))
+        enhancer = ImageEnhance.Brightness(rgb)
+        new_image = enhancer.enhance(np.random.random() * 0.5 + 0.5)
+        return np.asarray(new_image)
+    
+    def applySaturationTransform(self, image):
+        rgb = Image.fromarray(np.uint8(image))
+        enhancer = ImageEnhance.Color(rgb)
+        new_image = enhancer.enhance(np.random.random() * 0.5 + 0.5)
+        return np.asarray(new_image)
 
+    
+    
+    def frameBlur(self, img):
+        h_kernel_size = randint(2,6)
+        v_kernel_size = randint(2,6)
+
+        # Create the vertical kernel.
+        kernel_v = np.zeros((v_kernel_size, v_kernel_size))
+
+        # Create a copy of the same for creating the horizontal kernel.
+        kernel_h = np.zeros((h_kernel_size,h_kernel_size))
+
+        # Fill the middle row with ones.
+        kernel_v[:, int((v_kernel_size - 1)/2)] = np.ones(v_kernel_size)
+        kernel_h[int((h_kernel_size - 1)/2), :] = np.ones(h_kernel_size)
+
+        # Normalize.
+        kernel_v /= v_kernel_size
+        kernel_h /= h_kernel_size
+
+        # Apply the vertical kernel.
+        vertical_mb = cv2.filter2D(img, -1, kernel_v)
+
+        # Apply the horizontal kernel.
+        horizontal_mb = cv2.filter2D(vertical_mb, -1, kernel_h)
         
+        return horizontal_mb    
+        
+        
+    def circleTransform(self, diameter, value, jitter):
+        
+        img = np.ones((self.width,self.width,3))
+        
+        center = (72 + randint(0, jitter),72 + randint(0, jitter))
+
+
+        """
+            Creates a matrix of ones filling a circle.
+        """
+
+        # gets the radious of the image
+        radious  = diameter//2
+
+        # gets the row and column center of the image
+        row, col = center 
+
+        # generates theta vector to variate the angle
+        theta = np.arange(0, 360)*(np.pi/180)
+
+        # generates the indexes of the column
+        y = (radious*np.sin(theta)).astype("int32") 
+
+        # generates the indexes of the rows
+        x = (radious*np.cos(theta)).astype("int32") 
+
+        # with:
+        # img[x, y] = 1
+        # you can draw the border of the circle 
+        # instead of the inner part and the border. 
+
+        # centers the circle at the input center
+        rows = x + (row)
+        cols  = y + (col)
+
+        # gets the number of rows and columns to make 
+        # to cut by half the execution
+        nrows = rows.shape[0] 
+        ncols = cols.shape[0]
+
+        # makes a copy of the image
+        img_copy = copy.deepcopy(img)
+
+        # We use the simetry in our favour
+        # does reflection on the horizontal axes 
+        # and in the vertical axes
+
+        for row_down, row_up, col1, col2 in zip(rows[:nrows//4],
+                                np.flip(rows[nrows//4:nrows//2]),
+                                cols[:ncols//4],
+                                cols[nrows//2:3*ncols//4]):
+
+            img_copy[row_up:row_down, col2:col1] = value
+
+
+        return img_copy
+    
+    
+    def add_gaussian_noise(self, image, mean=0, var=5):
+        """Add Gaussian noise to an image represented as a Numpy array."""
+        row, col, ch = image.shape
+        gauss = np.random.normal(mean, var ** 0.5, (row, col, ch))
+        gauss = gauss.reshape(row, col, ch)
+        noisy_image = image + gauss
+        return np.clip(noisy_image, 0, 255).astype(np.uint8)

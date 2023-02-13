@@ -68,6 +68,7 @@ class VideoGenerator:
         dMap = dMap[0,:,:,0]
         nMap = nMap[0,:,:,0]
         
+        
         alpha = uniform(0.16,0.28)
         
         
