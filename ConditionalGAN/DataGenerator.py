@@ -18,8 +18,10 @@ from PIL import Image, ImageEnhance
 from random import random, uniform, randint, sample
 import cv2
 import copy
+from multiprocessing import Pool
+from tqdm import tqdm# In[2]:
+import multiprocessing as mp
 
-# In[2]:
 
 
 class DataGenerator: 
@@ -102,53 +104,107 @@ class DataGenerator:
         arr = np.array(arr, dtype=np.float32)
         arr = 2 * (arr - 0) / (255 - 0) - 1
         return arr
-        
+    
 
-    def generatePerlinData(self, numData, std = 0):
-        shape = (self.width,self.width)
+
+
+    def generate_data(self, z, width, topNm):
+        shape = (width, width)
         persistence = 0.5
         lacunarity = 1.8
 
+        world = np.zeros(shape)
+        randZ = random()
+        octaves = randint(4, 6) #more octaves = more "noise" in depth map. less octaves = smoother, simpler
+        scale = randint(200, 400) #more scale = less patterning. 
+        for i in range(shape[0]):
+            for j in range(shape[1]):
+                world[i][j] = noise.pnoise3(i/scale, 
+                                            j/scale, 
+                                            randZ,
+                                            octaves=octaves, 
+                                            persistence=persistence, 
+                                            lacunarity=lacunarity, 
+                                            repeatx=1024, 
+                                            repeaty=1024, 
+                                            base=40)
+        normalizedWorld = self.normalize_array(np.reshape(world, (width, width, 1)) * topNm)
+
+        noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld), 26) * self.circleTransform(diameter=35, value=0, jitter=7) * self.circleTransform(diameter=120, value=0.6, jitter=7)
+        noisy = self.applySaturationTransform(noisy)
+        noisy = self.applyBrightnessTransform(noisy)
+        noisy = self.frameBlur(noisy)
+
+        return (noisy, normalizedWorld)
+
+    def generatePerlinData(self, numData, std=0):
         depthMaps = []
         images = []
 
+        with Pool(processes=mp.cpu_count()) as pool:
+            results = [pool.apply_async(self.generate_data, args=(i, self.width, self.topNm)) for i in range(numData)]
+            results = [result.get() for result in tqdm(results, total=numData)]
 
-
-        for z in tqdm(range(numData)):
-            world = np.zeros(shape)
-            randZ = random()
-            octaves = randint(4, 6) #more octaves = more "noise" in depth map. less octaves = smoother, simpler
-            scale = randint(200, 400) #more scale = less patterning. 
-            for i in range(shape[0]):
-                for j in range(shape[1]):
-                    world[i][j] = noise.pnoise3(i/scale, 
-                                                j/scale, 
-                                                randZ,
-                                                octaves=octaves, 
-                                                persistence=persistence, 
-                                                lacunarity=lacunarity, 
-                                                repeatx=1024, 
-                                                repeaty=1024, 
-                                                base=40)
-            normalizedWorld = self.normalize_array(np.reshape(world, (self.width,self.width,1)) * self.topNm) #yields our SCALED array
+        for noisy, normalizedWorld in results:
             depthMaps.append(normalizedWorld)
-            
-            noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld)) * self.circleTransform(diameter = 35, value = 0, jitter = 7) * self.circleTransform(diameter = 120, value = 0.6, jitter = 7)
-            noisy = self.applySaturationTransform(noisy)
-            noisy = self.applyBrightnessTransform(noisy)
-            noisy = self.frameBlur(noisy)
-                        
-            
             images.append(noisy)
-        
+
         images = np.array(images)
         depthMaps = np.array(depthMaps)
-            
+
         images = self.normalize_images(images[:,0:self.width,0:self.width,0:self.dim])
         depthMaps = self.normalize_maps(depthMaps[:,0:self.width,0:self.width,0:1])
-            
-            
+
         return (images, depthMaps)
+
+
+        
+
+#     def generatePerlinData(self, numData, std = 0):
+#         shape = (self.width,self.width)
+#         persistence = 0.5
+#         lacunarity = 1.8
+
+#         depthMaps = []
+#         images = []
+
+
+
+#         for z in tqdm(range(numData)):
+#             world = np.zeros(shape)
+#             randZ = random()
+#             octaves = randint(4, 6) #more octaves = more "noise" in depth map. less octaves = smoother, simpler
+#             scale = randint(200, 400) #more scale = less patterning. 
+#             for i in range(shape[0]):
+#                 for j in range(shape[1]):
+#                     world[i][j] = noise.pnoise3(i/scale, 
+#                                                 j/scale, 
+#                                                 randZ,
+#                                                 octaves=octaves, 
+#                                                 persistence=persistence, 
+#                                                 lacunarity=lacunarity, 
+#                                                 repeatx=1024, 
+#                                                 repeaty=1024, 
+#                                                 base=40)
+#             normalizedWorld = self.normalize_array(np.reshape(world, (self.width,self.width,1)) * self.topNm) #yields our SCALED array
+#             depthMaps.append(normalizedWorld)
+            
+#             noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld)) * self.circleTransform(diameter = 35, value = 0, jitter = 7) * self.circleTransform(diameter = 120, value = 0.6, jitter = 7)
+#             noisy = self.applySaturationTransform(noisy)
+#             noisy = self.applyBrightnessTransform(noisy)
+#             noisy = self.frameBlur(noisy)
+                        
+            
+#             images.append(noisy)
+        
+#         images = np.array(images)
+#         depthMaps = np.array(depthMaps)
+            
+#         images = self.normalize_images(images[:,0:self.width,0:self.width,0:self.dim])
+#         depthMaps = self.normalize_maps(depthMaps[:,0:self.width,0:self.width,0:1])
+            
+            
+#         return (images, depthMaps)
 
 
     def generateGaussianData(self, numData, std = 0):
@@ -294,11 +350,23 @@ class DataGenerator:
 
         return img_copy
     
-    
-    def add_gaussian_noise(self, image, mean=0, var=5):
-        """Add Gaussian noise to an image represented as a Numpy array."""
-        row, col, ch = image.shape
-        gauss = np.random.normal(mean, var ** 0.5, (row, col, ch))
-        gauss = gauss.reshape(row, col, ch)
-        noisy_image = image + gauss
-        return np.clip(noisy_image, 0, 255).astype(np.uint8)
+    def add_gaussian_noise(self, image, stdev):
+        # Get the dimensions of the image
+        rows, cols, channels = image.shape
+
+        # Generate Gaussian noise with mean 0 and standard deviation stdev
+        noise = np.random.normal(0, stdev, (rows, cols, channels))
+
+        # Convert the image to float type
+        image = image.astype(np.float)
+
+        # Add the noise to the image
+        noisy_image = cv2.add(image, noise)
+
+        # Clip the image to the range [0, 255]
+        noisy_image = np.clip(noisy_image, 0, 255)
+
+        # Convert the image back to uint8 type
+        noisy_image = noisy_image.astype(np.uint8)
+
+        return noisy_image
