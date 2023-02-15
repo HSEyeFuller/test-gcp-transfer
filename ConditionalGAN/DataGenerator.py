@@ -136,26 +136,25 @@ class DataGenerator:
         noisy = self.frameBlur(noisy)
 
         return (noisy, normalizedWorld)
-
+    
+    
     def generatePerlinData(self, numData, std=0):
-        depthMaps = []
-        images = []
+        depthMaps = np.empty((numData, self.width, self.width, 1))
+        images = np.empty((numData, self.width, self.width, self.dim))
 
         with Pool(processes=mp.cpu_count()) as pool:
             results = [pool.apply_async(self.generate_data, args=(i, self.width, self.topNm)) for i in range(numData)]
             results = [result.get() for result in tqdm(results, total=numData)]
 
-        for noisy, normalizedWorld in results:
-            depthMaps.append(normalizedWorld)
-            images.append(noisy)
-
-        images = np.array(images)
-        depthMaps = np.array(depthMaps)
+        for i, (noisy, normalizedWorld) in enumerate(results):
+            depthMaps[i] = normalizedWorld
+            images[i] = noisy
 
         images = self.normalize_images(images[:,0:self.width,0:self.width,0:self.dim])
         depthMaps = self.normalize_maps(depthMaps[:,0:self.width,0:self.width,0:1])
 
         return (images, depthMaps)
+
 
 
         
