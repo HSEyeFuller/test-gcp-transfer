@@ -43,9 +43,12 @@ class DataGenerator:
     
     
     def normalize_array(self, array):
+        lower_bound = 1
+        upper_bound = 0
         
-        lower_bound = randint(500, 1800)
-        upper_bound = lower_bound + randint(200, 700)
+        while upper_bound < lower_bound:
+            lower_bound = round(np.random.normal(1460, 210, 1)[0])
+            upper_bound = round(np.random.normal(2120, 160, 1)[0])
         
         minimum, maximum = np.min(array), np.max(array)
         array = (array - minimum) * (upper_bound - lower_bound) / (maximum - minimum) + lower_bound
@@ -129,10 +132,15 @@ class DataGenerator:
                                             repeatx=1024, 
                                             repeaty=1024, 
                                             base=40)
-        
+                
+                
+        gaussIndex = randint(0, 1999)
+                        
+        world = np.multiply(world, self.normalize(self.gaussData[gaussIndex]))
+                        
         normalizedWorld = self.normalize_array(np.reshape(world, (width, width, 1)))
 
-        noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld), 26) * self.circleTransform(diameter=35, value=0, jitter=7)
+        noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld), 10) * self.circleTransform(diameter=35, value=0, jitter=7)
         noisy = self.applySaturationTransform(noisy)
         noisy = self.applyBrightnessTransform(noisy)
         noisy = self.frameBlur(noisy)
@@ -144,7 +152,7 @@ class DataGenerator:
         depthMaps = np.empty((numData, self.width, self.width))
         images = np.empty((numData, self.width, self.width, self.dim))
 
-        with Pool(processes=mp.cpu_count()) as pool:
+        with Pool(processes=8) as pool:
             results = [pool.apply_async(self.generate_data, args=(i, self.width, self.topNm)) for i in range(numData)]
             results = [result.get() for result in tqdm(results, total=numData)]
 
@@ -195,7 +203,7 @@ class DataGenerator:
             
             depthMaps.append(normalizedWorld)
             
-            noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld), 26) * self.circleTransform(diameter = 35, value = 0, jitter = 7) 
+            noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld), 15) * self.circleTransform(diameter = 35, value = 0, jitter = 7) 
             noisy = self.applySaturationTransform(noisy)
             noisy = self.applyBrightnessTransform(noisy)
             noisy = self.frameBlur(noisy)
