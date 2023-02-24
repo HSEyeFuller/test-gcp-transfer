@@ -21,25 +21,27 @@ import copy
 from multiprocessing import Pool
 from tqdm import tqdm# In[2]:
 import multiprocessing as mp
-
+from hkb_diamondsquare import DiamondSquare as DS
+from hkb_diamondsquare import DiamondSquare
 
 
 class DataGenerator: 
     
-    def __init__(self, gaussData, topNm = 1000):
+    def __init__(self, topNm = 1000):
         self.dim = 3
         self.width = 144
         mapfile = scipy.io.loadmat('EyeRGBMap.mat')
         # print(mapfile.keys())
         self.colorMap = np.array(mapfile['ColorMap']).reshape(5001,self.dim)
         self.topNm = topNm
-        self.gaussData = gaussData
         
     def normalize(self, data):
         m = np.max(data)
         mi = np.min(data)
         norm = (data - mi) / (m - mi)
         return norm
+    
+    
     
     
     def normalize_array(self, array):
@@ -109,43 +111,74 @@ class DataGenerator:
         arr = 2 * (arr - 0) / (255 - 0) - 1
         return arr
     
-
-
-
-    def generate_data(self, z, width, topNm):
-        shape = (width, width)
-        persistence = 0.5
-        lacunarity = 1.8
-
-        world = np.zeros(shape)
-        randZ = random()
-        octaves = randint(8, 10) #more octaves = more "noise" in depth map. less octaves = smoother, simpler
-        scale = randint(100, 400) #more scale = less patterning. 
-        for i in range(shape[0]):
-            for j in range(shape[1]):
-                world[i][j] = noise.pnoise3(i/scale, 
-                                            j/scale, 
-                                            randZ,
-                                            octaves=octaves, 
-                                            persistence=persistence, 
-                                            lacunarity=lacunarity, 
-                                            repeatx=1024, 
-                                            repeaty=1024, 
-                                            base=40)
-                
-                
-        gaussIndex = randint(0, 1999)
-                        
-        world = np.multiply(world, self.normalize(self.gaussData[gaussIndex]))
-                        
+    
+    
+    def create_one_fractal(self, z, width):
+        
+        world = DiamondSquare.diamond_square(shape=(width,width), min_height=0, max_height=10, roughness=0.40)
         normalizedWorld = self.normalize_array(np.reshape(world, (width, width, 1)))
-
+        
         noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld), 10) * self.circleTransform(diameter=35, value=0, jitter=7)
         noisy = self.applySaturationTransform(noisy)
         noisy = self.applyBrightnessTransform(noisy)
         noisy = self.frameBlur(noisy)
 
         return (noisy, normalizedWorld.reshape(width, width))
+    
+    
+    
+    def generateFractalData(self, numData, std=0):
+        depthMaps = np.empty((numData, self.width, self.width))
+        images = np.empty((numData, self.width, self.width, self.dim))
+
+        with Pool(processes=16) as pool:
+            results = [pool.apply_async(self.create_one_fractal, args=(i, self.width)) for i in range(numData)]
+            results = [result.get() for result in tqdm(results, total=numData)]
+
+        for i, (noisy, normalizedWorld) in enumerate(results):
+            depthMaps[i] = normalizedWorld
+            images[i] = noisy
+
+        images = self.normalize_images(images[:,0:self.width,0:self.width,0:self.dim])
+
+        return (images, depthMaps)
+
+
+
+#     def generate_data(self, z, width, topNm):
+#         shape = (width, width)
+#         persistence = 0.5
+#         lacunarity = 1.8
+
+#         world = np.zeros(shape)
+#         randZ = random()
+#         octaves = randint(8, 10) #more octaves = more "noise" in depth map. less octaves = smoother, simpler
+#         scale = randint(100, 400) #more scale = less patterning. 
+#         for i in range(shape[0]):
+#             for j in range(shape[1]):
+#                 world[i][j] = noise.pnoise3(i/scale, 
+#                                             j/scale, 
+#                                             randZ,
+#                                             octaves=octaves, 
+#                                             persistence=persistence, 
+#                                             lacunarity=lacunarity, 
+#                                             repeatx=1024, 
+#                                             repeaty=1024, 
+#                                             base=40)
+                
+                
+#         gaussIndex = randint(0, 1999)
+                        
+#         world = np.multiply(world, self.normalize(self.gaussData[gaussIndex]))
+                        
+#         normalizedWorld = self.normalize_array(np.reshape(world, (width, width, 1)))
+
+#         noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld), 10) * self.circleTransform(diameter=35, value=0, jitter=7)
+#         noisy = self.applySaturationTransform(noisy)
+#         noisy = self.applyBrightnessTransform(noisy)
+#         noisy = self.frameBlur(noisy)
+
+#         return (noisy, normalizedWorld.reshape(width, width))
     
     
     def generatePerlinData(self, numData, std=0):
@@ -165,60 +198,60 @@ class DataGenerator:
         return (images, depthMaps)
 
 
-    def generatePerlinDataSlow(self, numData, std = 0):
-        shape = (self.width,self.width)
-        persistence = 0.5
-        lacunarity = 1.8
+#     def generatePerlinDataSlow(self, numData, std = 0):
+#         shape = (self.width,self.width)
+#         persistence = 0.5
+#         lacunarity = 1.8
 
-        depthMaps = []
-        images = []
+#         depthMaps = []
+#         images = []
 
 
 
-        for z in tqdm(range(numData)):
-            world = np.zeros(shape)
-            randZ = random()
-            octaves = randint(8, 10) #more octaves = more "noise" in depth map. less octaves = smoother, simpler
-            scale = randint(100, 400) #more scale = less patterning. 
-            for i in range(shape[0]):
-                for j in range(shape[1]):
-                    world[i][j] = noise.pnoise3(i/scale, 
-                                                j/scale, 
-                                                randZ,
-                                                octaves=octaves, 
-                                                persistence=persistence, 
-                                                lacunarity=lacunarity, 
-                                                repeatx=1024, 
-                                                repeaty=1024, 
-                                                base=40)
+#         for z in tqdm(range(numData)):
+#             world = np.zeros(shape)
+#             randZ = random()
+#             octaves = randint(8, 10) #more octaves = more "noise" in depth map. less octaves = smoother, simpler
+#             scale = randint(100, 400) #more scale = less patterning. 
+#             for i in range(shape[0]):
+#                 for j in range(shape[1]):
+#                     world[i][j] = noise.pnoise3(i/scale, 
+#                                                 j/scale, 
+#                                                 randZ,
+#                                                 octaves=octaves, 
+#                                                 persistence=persistence, 
+#                                                 lacunarity=lacunarity, 
+#                                                 repeatx=1024, 
+#                                                 repeaty=1024, 
+#                                                 base=40)
             
             
             
             
-            gaussIndex = randint(0, 19999)
+#             gaussIndex = randint(0, 19999)
                         
-            world = np.multiply(world, self.normalize(self.gaussData[gaussIndex]))
+#             world = np.multiply(world, self.normalize(self.gaussData[gaussIndex]))
         
-            normalizedWorld = self.normalize_array(np.reshape(world, (shape[0], shape[1], 1)))
+#             normalizedWorld = self.normalize_array(np.reshape(world, (shape[0], shape[1], 1)))
             
-            depthMaps.append(normalizedWorld)
+#             depthMaps.append(normalizedWorld)
             
-            noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld), 15) * self.circleTransform(diameter = 35, value = 0, jitter = 7) 
-            noisy = self.applySaturationTransform(noisy)
-            noisy = self.applyBrightnessTransform(noisy)
-            noisy = self.frameBlur(noisy)
+#             noisy = self.add_gaussian_noise(self.fetchImageFromDepth(normalizedWorld), 15) * self.circleTransform(diameter = 35, value = 0, jitter = 7) 
+#             noisy = self.applySaturationTransform(noisy)
+#             noisy = self.applyBrightnessTransform(noisy)
+#             noisy = self.frameBlur(noisy)
                         
             
-            images.append(noisy)
+#             images.append(noisy)
         
-        images = np.array(images)
-        depthMaps = np.array(depthMaps)
+#         images = np.array(images)
+#         depthMaps = np.array(depthMaps)
             
-        images = self.normalize_images(images[:,0:self.width,0:self.width,0:self.dim])
-        depthMaps = self.normalize_maps(depthMaps[:,0:self.width,0:self.width,0:1])
+#         images = self.normalize_images(images[:,0:self.width,0:self.width,0:self.dim])
+#         depthMaps = self.normalize_maps(depthMaps[:,0:self.width,0:self.width,0:1])
             
             
-        return (images, depthMaps)
+#         return (images, depthMaps)
 
         
 
