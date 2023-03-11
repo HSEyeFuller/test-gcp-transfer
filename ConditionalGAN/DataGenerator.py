@@ -29,13 +29,12 @@ from scipy.ndimage import gaussian_filter
 
 class DataGenerator: 
     
-    def __init__(self, topNm = 1000):
+    def __init__(self):
         self.dim = 3
-        self.width = 144
+        self.width = 256
         mapfile = scipy.io.loadmat('EyeRGBMap.mat')
         # print(mapfile.keys())
         self.colorMap = np.array(mapfile['ColorMap']).reshape(5001,self.dim)
-        self.topNm = topNm
         
     def normalize(self, data):
         m = np.max(data)
@@ -113,27 +112,6 @@ class DataGenerator:
         arr = 2 * (arr - 0) / (255 - 0) - 1
         return arr
     
-    
-    def process_image(self, img_rgb):
-        def _create_LUT_8UC1(x, y):
-            spl = UnivariateSpline(x, y)
-            return spl(range(256))
-    
-    
-        img_rgb = img_rgb.astype(np.uint8)
-        incr_ch_lut = _create_LUT_8UC1([0, 64, 128, 192, 256], [0, 64 + randint(1, 10), 128 + randint(1, 10), 204 + randint(1, 10), 256])
-        decr_ch_lut = _create_LUT_8UC1([0, 64, 128, 192, 256], [0, 64 - randint(1, 10), 128 - randint(1, 10), 192 - randint(1, 10), 256])
-
-        c_r, c_g, c_b = cv2.split(img_rgb)
-        c_r = cv2.LUT(c_r, incr_ch_lut).astype(np.uint8)
-        c_b = cv2.LUT(c_b, decr_ch_lut).astype(np.uint8)
-        img_rgb = cv2.merge((c_r, c_g, c_b))
-        c_b = cv2.LUT(c_b, decr_ch_lut).astype(np.uint8)
-
-        # increase color saturation
-        c_h, c_s, c_v = cv2.split(cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV))
-        c_s = cv2.LUT(c_s, incr_ch_lut).astype(np.uint8)
-        return cv2.cvtColor(cv2.merge((c_h, c_s, c_v)), cv2.COLOR_HSV2RGB)
     
 
 
@@ -223,7 +201,7 @@ class DataGenerator:
     def applyBrightnessTransform(self, image):
         rgb = Image.fromarray(np.uint8(image))
         enhancer = ImageEnhance.Brightness(rgb)
-        new_image = enhancer.enhance(np.random.uniform(0.75, 1.25))
+        new_image = enhancer.enhance(np.random.uniform(0.9, 1.1))
         return np.asarray(new_image)
     
     def applySaturationTransform(self, image):
@@ -272,7 +250,7 @@ class DataGenerator:
         
         img = np.ones((self.width,self.width,3))
         
-        center = (72 + randint(0, jitter),72 + randint(0, jitter))
+        center = (int(self.width/2) + randint(0, jitter), int(self.width/2) + randint(0, jitter))
 
 
         """
@@ -362,11 +340,12 @@ class DataGenerator:
 
         # Scale up the array without changing the underlying structure
         scaled_Z = Z.repeat(3, axis=0).repeat(3, axis=1)
+        print(scaled_Z.shape)
 
         # Crop the desired sub-region of the scaled array
-        cx = np.random.randint(51)
-        cy = np.random.randint(51)
-        dMap = scaled_Z[cx:cx + 144, cy:cy + 144]
+        cx = np.random.randint(30)
+        cy = np.random.randint(30)
+        dMap = scaled_Z[cx:cx + self.width, cy:cy + self.width]
 
         return dMap
 
@@ -379,10 +358,10 @@ class DataGenerator:
     
     
     
-    def universalTransform(self, world, std = 5, outer = False, brightness = True, saturation = True, blur = False):
-        noisy = self.add_gaussian_noise(self.fetchImageFromDepth(world), std) * self.circleTransform(diameter = 35, value = 0, jitter = 10)
+    def universalTransform(self, world, std = 12, outer = True, brightness = True, saturation = False, blur = True):
+        noisy = self.add_gaussian_noise(world, std) * self.circleTransform(diameter = int(45 * self.width/self.width), value = 0, jitter = 10)
         if outer:
-            noisy = noisy * self.circleTransform(diameter=140, value=0.6, jitter=10)
+            noisy = noisy * self.circleTransform(diameter=int(150 * self.width/self.width), value=0.6, jitter=10)
         if saturation:
             noisy = self.applySaturationTransform(noisy)
         if brightness:
@@ -395,16 +374,16 @@ class DataGenerator:
     
     
     def generateGaussianData(self, numData):
-        maps = np.load("20kGauss.npy")    
-                    
-        maps = maps[0:numData,:,:]
         images = []
         depthMaps = []
 
         for i in tqdm(range(numData)):
-            world = self.normalize_array(np.reshape(maps[i], (self.width, self.width, 1)))
+            world = self.normalize_array(np.reshape(self.generateDepthMap(), (self.width, self.width, 1)))
             
-            noisy = self.universalTransform(world)
+            # noisy = self.universalTransform(world)
+            
+            noisy = self.fetchImageFromDepth(world)
+
             
             images.append(noisy)
             depthMaps.append(world)
@@ -439,15 +418,17 @@ class DataGenerator:
                                             repeaty=1024, 
                                             base=40)
 
-        if messy:                
+        if messy:    
             world = np.multiply(world, self.normalize(self.generateDepthMap()))
             world = np.multiply(world, self.normalize(self.generateDepthMap()))
             world = np.multiply(world, self.normalize(self.generateDepthMap()))
 
 
         world = self.normalize_array(np.reshape(world, (width, width, 1)))
+        
 
-        noisy = self.universalTransform(world)
+        # noisy = self.universalTransform(world)
+        noisy = self.fetchImageFromDepth(world)
 
         return (noisy, world.reshape(width, width))
     
@@ -480,7 +461,8 @@ class DataGenerator:
                 
         world = self.normalize_array(np.reshape(world, (width, width, 1)))
         
-        noisy = self.universalTransform(world)
+        # noisy = self.universalTransform(world)
+        noisy = self.fetchImageFromDepth(world)
 
         
         return (noisy, world.reshape(width, width))
